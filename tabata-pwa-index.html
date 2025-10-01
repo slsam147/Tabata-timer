@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Tabata Timer">
+    <meta name="theme-color" content="#000000">
+    <meta name="description" content="Temporizador Tabata profesional para entrenamientos HIIT">
+    
+    <title>Temporizador Tabata</title>
+    
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+    
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <style>
+        * {
+            -webkit-tap-highlight-color: transparent;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            overscroll-behavior: none;
+            position: fixed;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+        #root {
+            width: 100%;
+            height: 100%;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        input {
+            -webkit-user-select: text;
+            user-select: text;
+            font-size: 16px !important;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        const Play = ({ size = 24 }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+            </svg>
+        );
+
+        const Pause = ({ size = 24 }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="6" y="4" width="4" height="16"></rect>
+                <rect x="14" y="4" width="4" height="16"></rect>
+            </svg>
+        );
+
+        const SkipForward = ({ size = 24 }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polygon points="5 4 15 12 5 20 5 4"></polygon>
+                <line x1="19" y1="5" x2="19" y2="19"></line>
+            </svg>
+        );
+
+        const SkipBack = ({ size = 24 }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polygon points="19 20 9 12 19 4 19 20"></polygon>
+                <line x1="5" y1="19" x2="5" y2="5"></line>
+            </svg>
+        );
+
+        const RotateCcw = ({ size = 24 }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="1 4 1 10 7 10"></polyline>
+                <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+            </svg>
+        );
+
+        const Settings = ({ size = 24 }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M12 1v6m0 6v6m-6-6h6m6 0h-6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M18.36 5.64l-4.24 4.24m-4.24 4.24l-4.24 4.24"></path>
+            </svg>
+        );
+
+        const X = ({ size = 24 }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        );
+
+        const Save = ({ size = 24 }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                <polyline points="7 3 7 8 15 8"></polyline>
+            </svg>
+        );
+
+        const FolderOpen = ({ size = 24 }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+            </svg>
+        );
+
+        const TabataTimer = () => {
+            const [view, setView] = useState('timer');
+            const [wakeLock, setWakeLock] = useState(null);
+            
+            const [config, setConfig] = useState({
+                inicialCountdown: 7,
+                warmupInterval: 0,
+                exerciseInterval: 20,
+                restInterval: 15,
+                numberOfSets: 6,
+                recoveryInterval: 60,
+                numberOfCycles: 2,
+                cooldownInterval: 0
+            });
+
+            const defaultPresets = [
+                { name: 'Tabata Clásico', config: { inicialCountdown: 10, warmupInterval: 0, exerciseInterval: 20, restInterval: 10, numberOfSets: 8, recoveryInterval: 60, numberOfCycles: 1, cooldownInterval: 0 }},
+                { name: 'HIIT Intenso', config: { inicialCountdown: 10, warmupInterval: 30, exerciseInterval: 30, restInterval: 15, numberOfSets: 6, recoveryInterval: 90, numberOfCycles: 3, cooldownInterval: 60 }},
+                { name: 'Principiante', config: { inicialCountdown: 5, warmupInterval: 60, exerciseInterval: 20, restInterval: 40, numberOfSets: 4, recoveryInterval: 120, numberOfCycles: 2, cooldownInterval: 60 }}
+            ];
+
+            const [presets, setPresets] = useState(defaultPresets);
+            const [presetName, setPresetName] = useState('');
+            const [showPresetModal, setShowPresetModal] = useState(false);
+            const [presetAction, setPresetAction] = useState('');
+            const [isRunning, setIsRunning] = useState(false);
+            const [currentPhase, setCurrentPhase] = useState('inicial');
+            const [timeLeft, setTimeLeft] = useState(config.inicialCountdown);
+            const [currentSet, setCurrentSet] = useState(1);
+            const [currentCycle, setCurrentCycle] = useState(1);
+            const [totalTime, setTotalTime] = useState(0);
+            const audioContextRef = useRef(null);
+
+            useEffect(() => {
+                const requestWakeLock = async () => {
+                    if ('wakeLock' in navigator && isRunning) {
+                        try {
+                            const lock = await navigator.wakeLock.request('screen');
+                            setWakeLock(lock);
+                        } catch (err) {}
+                    }
+                };
+                if (isRunning) {
+                    requestWakeLock();
+                } else if (wakeLock) {
+                    wakeLock.release();
+                    setWakeLock(null);
+                }
+                return () => { if (wakeLock) wakeLock.release(); };
+            }, [isRunning]);
+
+            useEffect(() => {
+                audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+                return () => { if (audioContextRef.current) audioContextRef.current.close(); };
+            }, []);
+
+            const playSound = (frequency, duration) => {
+                const ctx = audioContextRef.current;
+                if (!ctx) return;
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.frequency.value = frequency;
+                gain.gain.setValueAtTime(0.3, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
+                osc.start(ctx.currentTime);
+                osc.stop(ctx.currentTime + duration);
+            };
+
+            const sounds = {
+                start: () => { playSound(800, 0.1); setTimeout(() => playSound(1000, 0.15), 100); },
+                exercise: () => { playSound(1200, 0.1); setTimeout(() => playSound(1400, 0.1), 100); setTimeout(() => playSound(1600, 0.2), 200); },
+                rest: () => playSound(600, 0.3),
+                recovery: () => { playSound(500, 0.2); setTimeout(() => playSound(400, 0.3), 150); },
+                completed: () => { playSound(800, 0.15); setTimeout(() => playSound(1000, 0.15), 150); setTimeout(() => playSound(1200, 0.15), 300); setTimeout(() => playSound(1500, 0.4), 450); },
+                lastSeconds: () => playSound(1000, 0.1)
+            };
+
+            const resetTimer = () => {
+                setIsRunning(false);
+                setCurrentPhase('inicial');
+                setTimeLeft(config.inicialCountdown);
+                setCurrentSet(1);
+                setCurrentCycle(1);
+                setTotalTime(0);
+            };
+
+            const nextPhase = () => {
+                if (currentPhase === 'inicial') {
+                    sounds.start();
+                    if (config.warmupInterval > 0) {
+                        setCurrentPhase('warmup');
+                        setTimeLeft(config.warmupInterval);
+                    } else {
+                        setCurrentPhase('exercise');
+                        setTimeLeft(config.exerciseInterval);
+                        sounds.exercise();
+                    }
+                } else if (currentPhase === 'warmup') {
+                    setCurrentPhase('exercise');
+                    setTimeLeft(config.exerciseInterval);
+                    sounds.exercise();
+                } else if (currentPhase === 'exercise') {
+                    if (currentSet < config.numberOfSets) {
+                        setCurrentPhase('rest');
+                        setTimeLeft(config.restInterval);
+                        sounds.rest();
+                    } else {
+                        if (currentCycle < config.numberOfCycles) {
+                            setCurrentPhase('recovery');
+                            setTimeLeft(config.recoveryInterval);
+                            setCurrentSet(1);
+                            setCurrentCycle(currentCycle + 1);
+                            sounds.recovery();
+                        } else {
+                            if (config.cooldownInterval > 0) {
+                                setCurrentPhase('cooldown');
+                                setTimeLeft(config.cooldownInterval);
+                                sounds.rest();
+                            } else {
+                                setCurrentPhase('completed');
+                                setIsRunning(false);
+                                sounds.completed();
+                            }
+                        }
+                    }
+                } else if (currentPhase === 'rest') {
+                    setCurrentSet(currentSet + 1);
+                    setCurrentPhase('exercise');
+                    setTimeLeft(config.exerciseInterval);
+                    sounds.exercise();
+                } else if (currentPhase === 'recovery') {
+                    setCurrentPhase('exercise');
+                    setTimeLeft(config.exerciseInterval);
+                    sounds.exercise();
+                } else if (currentPhase === 'cooldown') {
+                    setCurrentPhase('completed');
+                    setIsRunning(false);
+                    sounds.completed();
+                }
+            };
+
+            const previousPhase = () => {
+                if (currentPhase === 'exercise' && currentSet > 1) {
+                    setCurrentSet(currentSet - 1);
+                    setCurrentPhase('rest');
+                    setTimeLeft(config.restInterval);
+                } else if (currentPhase === 'rest' && currentSet > 1) {
+                    setCurrentPhase('exercise');
+                    setTimeLeft(config.exerciseInterval);
+                }
+            };
+
+            useEffect(() => {
+                let interval;
+                if (isRunning && currentPhase !== 'completed') {
+                    interval = setInterval(() => {
+                        setTotalTime(t => t + 1);
+                        setTimeLeft(prev => {
+                            if (prev <= 1) {
+                                nextPhase();
+                                return 0;
+                            }
+                            if (prev <= 4 && prev > 1) sounds.lastSeconds();
+                            return prev - 1;
+                        });
+                    }, 1000);
+                }
+                return () => clearInterval(interval);
+            }, [isRunning, currentPhase, timeLeft]);
+
+            const formatTime = (s) => {
+                const m = Math.floor(s / 60);
+                const sec = s % 60;
+                return `${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+            };
+
+            const getPhaseColor = () => {
+                const colors = { inicial: 'text-gray-400', warmup: 'text-red-500', exercise: 'text-orange-500', rest: 'text-yellow-400', recovery: 'text-blue-400', cooldown: 'text-cyan-400', completed: 'text-green-400' };
+                return colors[currentPhase] || 'text-orange-500';
+            };
+
+            const getPhaseText = () => {
+                const texts = { inicial: 'preparación', warmup: 'calentamiento', exercise: 'ejercicio', rest: 'descanso', recovery: 'recuperación', cooldown: 'enfriamiento', completed: '¡completado! 💪🏼' };
+                return texts[currentPhase] || '';
+            };
+
+            const savePreset = () => {
+                if (presetName.trim()) {
+                    setPresets([...presets, { name: presetName.trim(), config: { ...config } }]);
+                    setPresetName('');
+                    setShowPresetModal(false);
+                }
+            };
+
+            const loadPreset = (preset) => {
+                setConfig(preset.config);
+                setShowPresetModal(false);
+                resetTimer();
+            };
+
+            const deletePreset = (index) => setPresets(presets.filter((_, i) => i !== index));
+
+            const ConfigItem = ({ icon, label, value, onChange, suffix }) => (
+                <div className="flex items-center justify-between p-4 bg-gray-900 rounded-lg">
+                    <div className="flex items-center gap-3">
+                        <span className="text-2xl">{icon}</span>
+                        <div>
+                            <div className="font-semibold">{label}</div>
+                            <div className="text-sm text-gray-400">{value} {suffix}</div>
+                        </div>
+                    </div>
+                    <div className="flex gap-2">
+                        <button onClick={() => onChange(Math.max(0, value - 1))} className="w-10 h-10 bg-gray-800 hover:bg-gray-700 rounded-lg font-bold text-xl active:bg-gray-600">-</button>
+                        <button onClick={() => onChange(value + 1)} className="w-10 h-10 bg-gray-800 hover:bg-gray-700 rounded-lg font-bold text-xl active:bg-gray-600">+</button>
+                    </div>
+                </div>
+            );
+
+            if (view === 'settings') {
+                return (
+                    <div className="min-h-screen bg-black text-white p-4">
+                        <div className="max-w-2xl mx-auto pb-8">
+                            <div className="flex justify-between items-center mb-6">
+                                <h1 className="text-3xl font-bold">Configuración</h1>
+                                <button onClick={() => setView('timer')} className="p-2 hover:bg-gray-800 rounded-lg active:bg-gray-700"><X size={24} /></button>
+                            </div>
+                            <div className="space-y-1 mb-8">
+                                <h2 className="text-xl mb-4 text-gray-400">Medidas</h2>
+                                <ConfigItem icon="⏱️" label="Cuenta Regresiva Inicial" value={config.inicialCountdown} onChange={(v) => setConfig({ ...config, inicialCountdown: v })} suffix="segundos" />
+                                <ConfigItem icon="🔥" label="Intervalo de Calentamiento" value={config.warmupInterval} onChange={(v) => setConfig({ ...config, warmupInterval: v })} suffix="segundos" />
+                                <ConfigItem icon="💪" label="Intervalo de Ejercicio" value={config.exerciseInterval} onChange={(v) => setConfig({ ...config, exerciseInterval: v })} suffix="segundos" />
+                                <ConfigItem icon="😮‍💨" label="Intervalo de Descanso" value={config.restInterval} onChange={(v) => setConfig({ ...config, restInterval: v })} suffix="segundos" />
+                                <ConfigItem icon="#" label="Número de Series" value={config.numberOfSets} onChange={(v) => setConfig({ ...config, numberOfSets: v })} suffix="series" />
+                                <ConfigItem icon="🧘" label="Intervalo de Recuperación" value={config.recoveryInterval} onChange={(v) => setConfig({ ...config, recoveryInterval: v })} suffix="segundos" />
+                                <ConfigItem icon="🔁" label="Número de Ciclos" value={config.numberOfCycles} onChange={(v) => setConfig({ ...config, numberOfCycles: v })} suffix="ciclos" />
+                                <ConfigItem icon="❄️" label="Intervalo de Enfriamiento" value={config.cooldownInterval} onChange={(v) => setConfig({ ...config, cooldownInterval: v })} suffix="segundos" />
+                            </div>
+                            <div className="space-y-4">
+                                <h2 className="text-xl text-gray-400">Preajustes</h2>
+                                <button onClick={() => { setPresetAction('load'); setShowPresetModal(true); }} className="w-full flex items-center gap-3 p-4 bg-gray-900 hover:bg-gray-800 active:bg-gray-700 rounded-lg">
+                                    <FolderOpen size={24} />
+                                    <div className="text-left">
+                                        <div className="font-semibold">Cargar</div>
+                                        <div className="text-sm text-gray-400">Restaurar Medidas desde un Preajuste</div>
+                                    </div>
+                                </button>
+                                <button onClick={() => { setPresetAction('save'); setShowPresetModal(true); }} className="w-full flex items-center gap-3 p-4 bg-gray-900 hover:bg-gray-800 active:bg-gray-700 rounded-lg">
+                                    <Save size={24} />
+                                    <div className="text-left">
+                                        <div className="font-semibold">Guardar</div>
+                                        <div className="text-sm text-gray-400">Guardar Medidas Actuales como Preajuste</div>
+                                    </div>
+                                </button>
+                            </div>
+                        </div>
+                        {showPresetModal && (
+                            <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center p-4 z-50">
+                                <div className="bg-gray-900 rounded-lg p-6 max-w-md w-full">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <h3 className="text-xl font-bold">{presetAction === 'save' ? 'Guardar Preajuste' : 'Cargar Preajuste'}</h3>
+                                        <button onClick={() => { setShowPresetModal(false); setPresetName(''); }} className="text-gray-400 hover:text-white"><X size={24} /></button>
+                                    </div>
+                                    {presetAction === 'save' ? (
+                                        <div>
+                                            <input type="text" value={presetName} onChange={(e) => setPresetName(e.target.value)} placeholder="Nombre del preajuste" className="w-full px-4 py-3 bg-gray-800 rounded-lg mb-4 text-white" />
+                                            <button onClick={savePreset} disabled={!presetName.trim()} className="w-full py-3 bg-orange-500 hover:bg-orange-600 active:bg-orange-700 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg font-semibold">Guardar</button>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-2 max-h-96 overflow-y-auto">
+                                            {presets.map((preset, index) => (
+                                                <div key={index} className="flex items-center justify-between p-3 bg-gray-800 hover:bg-gray-700 active:bg-gray-600 rounded-lg">
+                                                    <button onClick={() => loadPreset(preset)} className="flex-1 text-left">{preset.name}</button>
+                                                    {index >= 3 && <button onClick={() => deletePreset(index)} className="ml-2 p-2 text-red-500 hover:bg-red-500 hover:text-white active:bg-red-600 rounded"><X size={18} /></button>}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                );
+            }
+
+            return (
+                <div className="min-h-screen bg-black text-white flex flex-col">
+                    <div className="flex justify-between items-center p-4">
+                        <div className="text-sm text-gray-400">Temporizador Tabata</div>
+                        <button onClick={() => setView('settings')} className="p-2 hover:bg-gray-800 active:bg-gray-700 rounded-lg"><Settings size={24} /></button>
+                    </div>
+                    <div className="flex-1 flex flex-col items-center justify-center px-4 pb-8">
+                        <div className={`text-2xl mb-8 uppercase tracking-wider ${getPhaseColor()}`}>{getPhaseText()}</div>
+                        <div className={`text-8xl md:text-9xl font-bold mb-16 ${getPhaseColor()}`}>{currentPhase === 'completed' ? '✓' : formatTime(timeLeft)}</div>
+                        <div className="w-full max-w-2xl border-t border-gray-800 pt-8 mb-8">
+                            <div className="grid grid-cols-3 gap-4 md:gap-8 text-center">
+                                <div>
+                                    <div className="text-gray-400 text-xs md:text-sm mb-2">series</div>
+                                    <div className="text-4xl md:text-5xl font-bold">{currentSet < 10 ? `0${currentSet}` : currentSet}</div>
+                                </div>
+                                <div>
+                                    <div className="text-gray-400 text-xs md:text-sm mb-2">ciclos</div>
+                                    <div className="text-4xl md:text-5xl font-bold">{currentCycle < 10 ? `0${currentCycle}` : currentCycle}</div>
+                                </div>
+                                <div>
+                                    <div className="text-gray-400 text-xs md:text-sm mb-2">tiempo total</div>
+                                    <div className="text-4xl md:text-5xl font-bold">{formatTime(totalTime)}</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex gap-4 md:gap-6 items-center">
+                            <button onClick={previousPhase} disabled={currentPhase === 'inicial' || currentPhase === 'completed' || currentSet === 1} className="p-3 md:p-4 bg-gray-800 hover:bg-gray-700 active:bg-gray-600 disabled:bg-gray-900 disabled:text-gray-600 rounded-full"><SkipBack size={28} /></button>
+                            <button onClick={() => { if (currentPhase === 'completed') resetTimer(); else setIsRunning(!isRunning); }} className="p-6 md:p-8 bg-orange-500 hover:bg-orange-600 active:bg-orange-700 rounded-full">
+                                {currentPhase === 'completed' ? <RotateCcw size={44} /> : isRunning ? <Pause size={44} /> : <Play size={44} />}
+                            </button>
+                            <button onClick={nextPhase} disabled={currentPhase === 'completed'} className="p-3 md:p-4 bg-gray-800 hover:bg-gray-700 active:bg-gray-600 disabled:bg-gray-900 disabled:text-gray-600 rounded-full"><SkipForward size={28} /></button>
+                        </div>
+                        <button onClick={resetTimer} className="mt-8 p-3 text-gray-400 hover:text-white hover:bg-gray-800 active:bg-gray-700 rounded-lg flex items-center gap-2">
+                            <RotateCcw size={20} />Reiniciar
+                        </button>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<TabataTimer />);
+    </script>
+    
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('service-worker.js')
+                    .then(reg => console.log('SW registrado'))
+                    .catch(err => console.log('SW error:', err));
+            });
+        }
+    </script>
+</body>
+</html>
